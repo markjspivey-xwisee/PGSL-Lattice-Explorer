@@ -1,0 +1,5 @@
+{
+  "name": "PGSL Lattice Explorer",
+  "description": "A reference implementation of the Poly-Granular Sequence Lattice (PGSL) ADT. Visualizes how sequential data forms a deterministic hierarchy of overlapping sub-structures.",
+  "requestFramePermissions": []
+}
