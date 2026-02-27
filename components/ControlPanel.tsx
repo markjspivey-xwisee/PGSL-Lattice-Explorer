@@ -3,7 +3,7 @@ import { PGSLEngine } from '../services/cahEngine';
 import { GeminiController } from '../services/geminiService';
 import { Node, NodeType } from '../types';
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 interface ControlPanelProps {
   engine: PGSLEngine;
@@ -52,7 +52,7 @@ const StageItem: React.FC<{
     );
 };
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ engine, selectedNodeId }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ engine, nodes, selectedNodeId }) => {
   const [textInput, setTextInput] = useState<string>('');
   const [stage, setStage] = useState<(string | number)[]>([]);
   
@@ -65,7 +65,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ engine, selectedNodeId }) =
   const [isGeminiLoading, setIsGeminiLoading] = useState(false);
   const [geminiResponse, setGeminiResponse] = useState('');
   
-  const gemini = new GeminiController(engine);
+  const geminiRef = useRef<GeminiController | null>(null);
+  if (!geminiRef.current) {
+    geminiRef.current = new GeminiController(engine);
+  }
+  const gemini = geminiRef.current;
 
   useEffect(() => {
     engine.setFederationConfig(hostUri, userDid);
@@ -258,7 +262,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ engine, selectedNodeId }) =
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
              PGSL Architect AI
          </h3>
-         {!process.env.API_KEY ? (
+         {!import.meta.env.GEMINI_API_KEY ? (
              <p className="text-xs text-slate-500">API Key missing.</p>
          ) : (
             <form onSubmit={handleGeminiSubmit} className="space-y-2 flex-1 flex flex-col">

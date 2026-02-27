@@ -8,8 +8,9 @@ export class GeminiController {
 
   constructor(engine: PGSLEngine) {
     this.engine = engine;
-    if (process.env.API_KEY) {
-      this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = import.meta.env.GEMINI_API_KEY || '';
+    if (apiKey) {
+      this.ai = new GoogleGenAI({ apiKey });
     }
   }
 

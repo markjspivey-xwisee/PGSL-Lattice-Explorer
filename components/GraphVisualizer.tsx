@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { PGSLEngine } from '../services/cahEngine';
 import { Node, NodeType, FragmentNode } from '../types';
 
-const { useEffect, useRef, useState } = React;
+const { useEffect, useRef, useState, useCallback } = React;
 
 interface GraphVisualizerProps {
   engine: PGSLEngine;
@@ -14,7 +14,7 @@ interface GraphVisualizerProps {
 interface SimNode extends d3.SimulationNodeDatum {
   id: string;
   data: Node;
-  heightLevel: number; 
+  heightLevel: number;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -31,6 +31,16 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
+  const nodeGroupRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(selectedNodeId);
+
+  // Keep the ref in sync so the D3 click handler always sees the latest callback
+  const onNodeSelectRef = useRef(onNodeSelect);
+  onNodeSelectRef.current = onNodeSelect;
+
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
 
   useEffect(() => {
     const sync = () => setNodes(engine.getAllNodes());
@@ -39,6 +49,7 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
     return unsub;
   }, [engine]);
 
+  // Build D3 simulation only when nodes change — NOT on selection change
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || nodes.length === 0) return;
 
@@ -48,8 +59,8 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
     const simNodes: SimNode[] = nodes.map(n => ({
       id: n["@id"],
       data: n,
-      heightLevel: (n as any)["pgsl:height"], 
-      y: height - ((n as any)["pgsl:height"] * 100) - 50 
+      heightLevel: (n as any)["pgsl:height"],
+      y: height - ((n as any)["pgsl:height"] * 100) - 50
     }));
 
     const simLinks: SimLink[] = [];
@@ -59,15 +70,12 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
       const content = isFragment ? (n as any)["pgsl:content"] : [];
 
       if (constituents) {
-        // Only create links if the target nodes actually exist in our visualization
-        // (In a real federated graph, they might be off-screen, but D3 needs them)
         if (nodes.find(node => node["@id"] === constituents[0]))
             simLinks.push({ source: constituents[0], target: n["@id"], isLattice: true });
         if (nodes.find(node => node["@id"] === constituents[1]))
             simLinks.push({ source: constituents[1], target: n["@id"], isLattice: true });
-      } 
+      }
       else if (isFragment && content.length > 0) {
-          // Base Wrapper Link
           if (nodes.find(node => node["@id"] === content[0]))
             simLinks.push({ source: content[0], target: n["@id"], isLattice: false });
       }
@@ -115,14 +123,14 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
       .selectAll("line")
       .data(simLinks)
       .join("line")
-      .attr("stroke", d => d.isLattice ? "#f59e0b" : "#10b981") 
+      .attr("stroke", d => d.isLattice ? "#f59e0b" : "#10b981")
       .attr("stroke-width", d => d.isLattice ? 2 : 1)
       .attr("stroke-dasharray", d => d.isLattice ? "0" : "4 2")
       .attr("opacity", 0.6)
       .attr("marker-end", "url(#arrow)");
 
     const nodeGroup = g.append("g")
-      .selectAll("g")
+      .selectAll<SVGGElement, SimNode>("g")
       .data(simNodes)
       .join("g")
       .call(d3.drag<SVGGElement, SimNode>()
@@ -130,14 +138,19 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
         .on("drag", dragged)
         .on("end", dragended));
 
-    // Circles
+    // Store nodeGroup ref for selection updates
+    nodeGroupRef.current = nodeGroup;
+
+    // Circles — use a function that reads selectedNodeIdRef so color updates work
+    const getNodeFill = (d: SimNode) => {
+      if (d.id === selectedNodeIdRef.current) return "#ec4899"; // Pink selected
+      if ((d.data["@type"] as string[]).includes(NodeType.ATOM)) return "#3b82f6"; // Blue Atom
+      return "#f59e0b"; // Amber Fragment
+    };
+
     nodeGroup.append("circle")
       .attr("r", d => (d.data["@type"] as string[]).includes(NodeType.ATOM) ? 12 : 24)
-      .attr("fill", d => {
-        if (d.id === selectedNodeId) return "#ec4899"; // Pink selected
-        if ((d.data["@type"] as string[]).includes(NodeType.ATOM)) return "#3b82f6"; // Blue Atom
-        return "#f59e0b"; // Amber Fragment
-      })
+      .attr("fill", getNodeFill)
       .attr("stroke", d => {
           const isWrapper = (d.data["@type"] as string[]).includes(NodeType.FRAGMENT) && !(d.data as any)["pgsl:constituents"];
           return isWrapper ? "#10b981" : "#fff";
@@ -146,7 +159,7 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
       .attr("cursor", "pointer")
       .on("click", (event, d) => {
         event.stopPropagation();
-        onNodeSelect(d.id);
+        onNodeSelectRef.current(d.id);
       });
 
     // Labels
@@ -160,7 +173,7 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
       .attr("dy", 4)
       .attr("text-anchor", "middle")
       .attr("fill", "white")
-      .attr("font-size", d => (d.data["@type"] as string[]).includes(NodeType.ATOM) ? "10px" : "10px")
+      .attr("font-size", "10px")
       .attr("font-weight", "bold")
       .attr("pointer-events", "none");
 
@@ -194,8 +207,20 @@ const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ engine, onNodeSelect,
 
     return () => {
       simulation.stop();
+      nodeGroupRef.current = null;
     };
-  }, [nodes, selectedNodeId]);
+  }, [nodes]);
+
+  // Update circle fill colors when selection changes — no simulation rebuild
+  useEffect(() => {
+    if (!nodeGroupRef.current) return;
+    nodeGroupRef.current.select<SVGCircleElement>("circle")
+      .attr("fill", (d: SimNode) => {
+        if (d.id === selectedNodeId) return "#ec4899";
+        if ((d.data["@type"] as string[]).includes(NodeType.ATOM)) return "#3b82f6";
+        return "#f59e0b";
+      });
+  }, [selectedNodeId]);
 
   return (
     <div ref={containerRef} className="w-full h-full bg-slate-900 rounded-lg overflow-hidden relative shadow-inner">

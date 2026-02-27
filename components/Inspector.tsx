@@ -39,6 +39,8 @@ const Inspector: React.FC<InspectorProps> = ({ engine, nodeId }) => {
             if (n && (n["@type"] as string[]).includes(NodeType.FRAGMENT)) {
                 const values = (n as any)["pgsl:content"].map((id: string) => resolveDeepContent(id));
                 setContentValues(values);
+            } else {
+                setContentValues([]);
             }
         } else {
             setNode(null);
